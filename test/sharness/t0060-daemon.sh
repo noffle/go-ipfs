@@ -44,6 +44,18 @@ test_expect_success "ipfs peer id looks good" '
   test_check_peerid "$PEERID"
 '
 
+# this is for checking SetAllowedOrigins race condition for the api and gateway
+# See https://github.com/ipfs/go-ipfs/pull/1966
+test_expect_success "ipfs API works with the correct allowed origin port" '
+  echo $PORT_API &&
+  curl -H "Origin: http://localhost:$PORT_API" -I http://localhost:$PORT_API/api/v0/version
+'
+
+test_expect_success "ipfs gateway works with the correct allowed origin port" '
+  echo $PORT_GWAY &&
+  curl -H "Origin: http://localhost:$PORT_GWAY" -I http://localhost:$PORT_GWAY/api/v0/version
+'
+
 # This is like t0020-init.sh "ipfs init output looks good"
 #
 # Unfortunately the line:
