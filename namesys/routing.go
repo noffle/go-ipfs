@@ -11,6 +11,7 @@ import (
 
 	key "github.com/ipfs/go-ipfs/blocks/key"
 	pb "github.com/ipfs/go-ipfs/namesys/pb"
+	ci "github.com/ipfs/go-ipfs/p2p/crypto"
 	path "github.com/ipfs/go-ipfs/path"
 	routing "github.com/ipfs/go-ipfs/routing"
 	u "github.com/ipfs/go-ipfs/util"
@@ -132,23 +133,41 @@ func (r *routingResolver) resolveOnce(ctx context.Context, name string) (path.Pa
 	// /ipns/<name>
 	h := []byte("/ipns/" + string(hash))
 
-	ipnsKey := key.Key(h)
-	val, err := r.routing.GetValue(ctx, ipnsKey)
-	if err != nil {
-		log.Warning("RoutingResolve get failed.")
-		return "", err
-	}
+	var entry *pb.IpnsEntry
+	var pubkey ci.PubKey
 
-	entry := new(pb.IpnsEntry)
-	err = proto.Unmarshal(val, entry)
-	if err != nil {
-		return "", err
-	}
+	resp := make(chan error, 2)
+	go func() {
+		ipnsKey := key.Key(h)
+		val, err := r.routing.GetValue(ctx, ipnsKey)
+		if err != nil {
+			log.Warning("RoutingResolve get failed.")
+			resp <- err
+		}
 
-	// name should be a public key retrievable from ipfs
-	pubkey, err := routing.GetPublicKey(r.routing, ctx, hash)
-	if err != nil {
-		return "", err
+		entry = new(pb.IpnsEntry)
+		err = proto.Unmarshal(val, entry)
+		if err != nil {
+			resp <- err
+		}
+		resp <- nil
+	}()
+
+	go func() {
+		// name should be a public key retrievable from ipfs
+		pubk, err := routing.GetPublicKey(r.routing, ctx, hash)
+		if err != nil {
+			resp <- err
+		}
+		pubkey = pubk
+		resp <- nil
+	}()
+
+	for i := 0; i < 2; i++ {
+		err = <-resp
+		if err != nil {
+			return "", err
+		}
 	}
 
 	hsh, _ := pubkey.Hash()
